@@ -45,16 +45,14 @@ def validate_cnic(cnic):
 # Firebase PATCH helper
 # ---------------------
 def firebase_patch(path, data):
-    base = DB_URL.rstrip('/')  # ensures no trailing slash
+    base = DB_URL.rstrip('/')   # remove trailing slash
     if path:
-        path = path.strip('/')   # remove accidental slashes
         url = f"{base}/{path}.json?auth={SECRET}"
     else:
         url = f"{base}.json?auth={SECRET}"
     resp = requests.patch(url, json=data)
     resp.raise_for_status()
     return resp.json()
-
 
 
 
@@ -143,6 +141,7 @@ def register():
 if __name__ == "__main__":
     print(f"✅ Server running → http://localhost:{PORT}")
     app.run(host="0.0.0.0", port=PORT, debug=True)
+
 
 
 
