@@ -12,8 +12,8 @@ load_dotenv()
 app = Flask(__name__, static_folder='public', static_url_path='/')
 
 # Firebase config
-DB_URL = os.getenv("FIREBASE_DB_URL")
-SECRET = os.getenv("FIREBASE_SECRET")
+DB_URL = os.getenv("FIREBASE_DB_URL", "").strip()  # Remove whitespace/newline
+SECRET = os.getenv("FIREBASE_SECRET", "").strip()
 PORT = int(os.getenv("PORT", 3000))
 
 if not DB_URL or not SECRET:
@@ -141,4 +141,5 @@ def register():
 if __name__ == "__main__":
     print(f"✅ Server running → http://localhost:{PORT}")
     app.run(host="0.0.0.0", port=PORT, debug=True)
+
 
