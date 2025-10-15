@@ -1,64 +1,59 @@
 from flask import Flask, request, jsonify, send_from_directory
-from flask import Flask, request, jsonify, send_from_directory, redirect
-
-import os
-import requests
-from dotenv import load_dotenv
+import os, requests
 from datetime import datetime
-
-# Load .env
+from dotenv import load_dotenv
 load_dotenv()
 
+
+# -------------------------
+# Flask setup
+# -------------------------
 app = Flask(__name__, static_folder='public', static_url_path='/')
 
-# Firebase config
-DB_URL = os.getenv("FIREBASE_DB_URL", "").strip()  # Remove whitespace/newline
-SECRET = os.getenv("FIREBASE_SECRET", "").strip()
+# -------------------------
+# Firebase config (from Railway Variables)
+# -------------------------
+DB_URL = os.getenv("FIREBASE_DB_URL", "").rstrip("/")
+SECRET = os.getenv("FIREBASE_SECRET", "")
 PORT = int(os.getenv("PORT", 3000))
 
 if not DB_URL or not SECRET:
-    raise Exception("❌ FIREBASE_DB_URL or FIREBASE_SECRET missing in .env")
+    raise Exception("❌ Firebase credentials not found in environment variables")
 
-# ---------------------
-# Home Route
-# ---------------------
+print("🔥 Firebase URL:", DB_URL)
+print("🔥 Firebase Secret Loaded Successfully")
+
+# -------------------------
+# Serve your HTML form
+# -------------------------
 @app.route("/")
 def home():
-    return redirect("/vehicle_form.html")
+    return send_from_directory("public", "vehicle_form.html")
 
-    
-
-# ---------------------
-# Serve static files (HTML form)
-# ---------------------
-@app.route('/<path:path>')
+@app.route("/<path:path>")
 def static_file(path):
-    return send_from_directory('public', path)
+    return send_from_directory("public", path)
 
-# ---------------------
+# -------------------------
 # CNIC Validator
-# ---------------------
+# -------------------------
 def validate_cnic(cnic):
     return cnic.isdigit() and len(cnic) == 13
 
-# ---------------------
-# Firebase PATCH helper
-# ---------------------
+# -------------------------
+# Firebase PATCH Helper
+# -------------------------
 def firebase_patch(path, data):
-    base = DB_URL.rstrip('/')   # remove trailing slash
-    if path:
-        url = f"{base}/{path}.json?auth={SECRET}"
-    else:
-        url = f"{base}.json?auth={SECRET}"
+    url = f"{DB_URL}/{path}.json?auth={SECRET}"
+    print("📡 Firebase PATCH →", url)
     resp = requests.patch(url, json=data)
+    print("📡 Firebase response:", resp.status_code)
     resp.raise_for_status()
     return resp.json()
 
-
-
-# ---------------------
+# -------------------------
 # Register API
-# ---------------------
+# -------------------------
 @app.route("/api/register", methods=["POST"])
 def register():
     try:
@@ -69,22 +64,23 @@ def register():
         if not validate_cnic(cnic):
             return jsonify({"status": "error", "message": "❌ Invalid CNIC (must be 13 digits)"}), 400
 
-        nadra_node = {
+        # Prepare NADRA + Excise Data
+        nadra_data = {
             "ownerName": form.get("ownerName"),
             "fatherName": form.get("fatherName"),
             "cnic": cnic,
             "mobile": form.get("mobile"),
             "presentAddress": form.get("presentAddress"),
             "permanentAddress": form.get("permanentAddress"),
-            "email": form.get("email")
+            "email": form.get("email"),
+            "createdAt": datetime.utcnow().isoformat()
         }
 
-        vehicle_id = form.get("chassis", "").replace(" ", "").replace("-", "") or f"v_{int(datetime.utcnow().timestamp()*1000)}"
-        vehicle_node = {
+        excise_data = {
             "make": form.get("make"),
             "model": form.get("model"),
             "chassis": form.get("chassis"),
-            "carnumberplate": form.get("carNumberPlate"),
+            "carNumberPlate": form.get("carNumberPlate"),
             "engine": form.get("engine"),
             "color": form.get("color"),
             "vehicleType": form.get("vehicleType"),
@@ -96,25 +92,24 @@ def register():
             "invoiceDate": form.get("invoiceDate"),
             "purchasePrice": form.get("purchasePrice"),
             "dealerName": form.get("dealerName"),
-            "dealerInfo": form.get("dealerInfo")
-        }
-
-        full_info = {
-            **nadra_node,
-            "vehicle": vehicle_node,
-            "taxInfo": {
-                "registrationFee": form.get("registrationFee"),
-                "vehicleTax": form.get("vehicleTax"),
-                "tokenTax": form.get("tokenTax"),
-                "smartCardFee": form.get("smartCardFee"),
-                "plateFee": form.get("plateFee")
-            },
+            "dealerInfo": form.get("dealerInfo"),
+            "registrationFee": form.get("registrationFee"),
+            "vehicleTax": form.get("vehicleTax"),
+            "tokenTax": form.get("tokenTax"),
+            "smartCardFee": form.get("smartCardFee"),
+            "plateFee": form.get("plateFee"),
             "createdAt": datetime.utcnow().isoformat()
         }
 
+        full_info = {
+            **nadra_data,
+            "vehicle": excise_data
+        }
+
+        # Push to Firebase
         updates = {
-            f"NADRA/{cnic}": nadra_node,
-            f"Excise/{cnic}": vehicle_node,
+            f"NADRA/{cnic}": nadra_data,
+            f"Excise/{cnic}": excise_data,
             f"FULL_INFO_USER/{cnic}": full_info
         }
 
@@ -122,9 +117,7 @@ def register():
 
         return jsonify({
             "status": "success",
-            "message": "✅ Record successfully stored in Firebase",
-            "savedCnic": cnic,
-            "vehicleId": vehicle_id,
+            "message": "✅ Data saved to Firebase successfully",
             "firebaseResponse": firebase_response
         })
 
@@ -135,15 +128,9 @@ def register():
         print("🔥 Exception:", e)
         return jsonify({"status": "error", "message": f"Server error: {str(e)}"}), 500
 
-# ---------------------
-# Run server
-# ---------------------
+# -------------------------
+# Run Server
+# -------------------------
 if __name__ == "__main__":
     print(f"✅ Server running → http://localhost:{PORT}")
     app.run(host="0.0.0.0", port=PORT, debug=True)
-
-
-
-
-
-
